@@ -6,15 +6,17 @@ Created on Mon Jan 20 21:16:50 2025
 @author: akash
 """
 
-# install libraries
+# Install libraries
 # !pip install selenium
 
 # Import libraries
 import os
 import time
 import shutil
+import platform
 import pandas as pd
 from selenium import webdriver
+from datetime import datetime, timedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -29,11 +31,23 @@ def setup_chrome_options():
     chrome_options.add_argument("--disable-dev-shm-usage")
     return chrome_options
 
-def create_directories(base_dir):
-    os.makedirs(os.path.join(base_dir, 'data'), exist_ok=True)
-    os.makedirs(os.path.join(base_dir, 'final_report'), exist_ok=True)
-    print(f"Directories created successfully in {base_dir}")
+# Takes in a directory path. If it doesn't exist, creates it. If it exists, deletes all its contents.
+def manage_directory(base_dir, folder):
+    directory_path = os.path.join(base_dir, folder)
+    
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
+        print(f"Directory created: {directory_path}")
+    else:
+        for item in os.listdir(directory_path):
+            item_path = os.path.join(directory_path, item)
+            if os.path.isfile(item_path):
+                os.remove(item_path)  
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+        print(f"Directory cleared: {directory_path}")
 
+# Checks for new file in the default download directory
 def check_new_file(download_dir, initial_count, timeout=60):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -43,11 +57,23 @@ def check_new_file(download_dir, initial_count, timeout=60):
         time.sleep(0.1)
     return False
 
+# Does the clicking operation
 def select_option(driver, xpath):
     element = driver.find_element(By.XPATH, xpath)
     element.click()
     return element
 
+# Gets the default download directory path for your specified OS as the files are initially downloaded first here and later moved
+def get_download_path():
+    if platform.system() == "Windows":
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders") as key:
+            downloads_path = winreg.QueryValueEx(key, "{374DE290-123F-4565-9164-39C4925E467B}")[0]
+    else:
+        downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+    return downloads_path
+
+# Function for downloading of the data
 def download_data(driver, url, download_dir, base_dir, from_date, to_date):
     # Defining keys and xpath's as values according to webpage layout
     main_tag = '/html/body/main/div[2]/div/div[2]/download-center/download-center-market-data/form/div/ui-select[{}]/div/select'
@@ -187,8 +213,10 @@ def download_data(driver, url, download_dir, base_dir, from_date, to_date):
 
     return consolidated_df
 
+# Main function
 def main(base_dir, url, download_dir, from_date, to_date):
-    create_directories(base_dir)
+    manage_directory(base_dir, 'data')
+    manage_directory(base_dir, 'final_report')
     chrome_options = setup_chrome_options()
     driver = webdriver.Chrome(options=chrome_options)
 
@@ -211,9 +239,13 @@ def main(base_dir, url, download_dir, from_date, to_date):
 if __name__ == "__main__":
     # Input
     url = r'https://www.smard.de/en/downloadcenter/download-market-data/'
-    base_dir = r'/Users/akash/Desktop/akash'
-    download_dir = "/Users/akash/Downloads"
-    from_date = '01/01/2023'
-    to_date = '12/31/2024'
+    base_dir = os.getcwd()
+    download_dir = get_download_path()
+    
+    # Website allows at a time max 2 years of data extraction
+    to_date = datetime.now().date()
+    from_date = to_date - timedelta(days=365*2)  # Approximately 2 years
+    to_date = to_date.strftime("%m/%d/%Y")
+    from_date = from_date.strftime("%m/%d/%Y")
 
     main(base_dir, url, download_dir, from_date, to_date)
